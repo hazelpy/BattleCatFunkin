@@ -1,13 +1,17 @@
 package;
 
+import flixel.input.gamepad.FlxGamepad;
 import Controls.KeyboardScheme;
 import Controls.Control;
 import flash.text.TextField;
 import flixel.FlxG;
 import flixel.FlxSprite;
+import flixel.FlxObject;
 import flixel.addons.display.FlxGridOverlay;
 import flixel.group.FlxGroup.FlxTypedGroup;
 import flixel.input.keyboard.FlxKey;
+import flixel.input.mouse.FlxMouse;
+import flixel.input.mouse.FlxMouseEventManager;
 import flixel.math.FlxMath;
 import flixel.math.FlxPoint;
 import flixel.text.FlxText;
@@ -16,6 +20,7 @@ import flixel.tweens.FlxTween;
 import flixel.util.FlxTimer;
 import flixel.util.FlxColor;
 import lime.utils.Assets;
+import lime.app.Application;
 
 class OptionsMenu extends MusicBeatSubstate
 {
@@ -36,6 +41,7 @@ class OptionsMenu extends MusicBeatSubstate
 	var controlsPaths:Array<String>;
 	var descriptions:Array<String>;
 	var optionsBG:FlxSprite;
+	var iconSettings:FlxSprite;
 	
 	override function create()
 	{
@@ -117,6 +123,10 @@ class OptionsMenu extends MusicBeatSubstate
 			grpHighlights.add(controlHL);
 		}
 		
+		// Icons menu substate
+		iconSettings = new FlxSprite(178, 555).loadGraphic(Paths.image('menu/options/travelSelect'));
+		FlxMouseEventManager.add(iconSettings, openIconSettings);
+		add(iconSettings);
 
 		versionShit = new FlxText(5, FlxG.height - 18, 0, "Offset (Left, Right): " + FlxG.save.data.offset, 12);
 		versionShit.scrollFactor.set();
@@ -139,6 +149,11 @@ class OptionsMenu extends MusicBeatSubstate
 
 		changeSelection();
 		updateButtons();
+	}
+
+	function openIconSettings(obj:FlxObject) {
+		inSubState = true;
+		openSubState(new TravelIconSubstate());
 	}
 
 	override function update(elapsed:Float)
@@ -166,11 +181,16 @@ class OptionsMenu extends MusicBeatSubstate
 			}
 
 			if (controls.LEFT_P)
-				{
-					FlxG.save.data.offset--;
-					versionShit.text = "Offset (Left, Right): " + FlxG.save.data.offset;
-				}
+			{
+				FlxG.save.data.offset--;
+				versionShit.text = "Offset (Left, Right): " + FlxG.save.data.offset;
+			}
 
+			if (FlxG.keys.justPressed.PERIOD) {
+				TravelIconSubstate.resetIconData();
+				Unlocks.reset();
+				openSubState(new AlertSubstate("Successfully reset all unlocks!"));
+			}
 
 			if (controls.ACCEPT)
 			{
@@ -233,9 +253,12 @@ class OptionsMenu extends MusicBeatSubstate
 		switch(way) {
 			case 'in':
 				description.alpha = 0;
+				iconSettings.alpha = 0;
 				FlxTween.tween(description, {alpha:1}, 0.5, {ease: FlxEase.expoInOut});
+				FlxTween.tween(iconSettings, {alpha:1}, 0.5, {ease: FlxEase.expoInOut});
 			case 'out':
 				FlxTween.tween(description, {alpha:0}, 0.5, {ease: FlxEase.expoInOut});
+				FlxTween.tween(iconSettings, {alpha:0}, 0.5, {ease: FlxEase.expoInOut});
 		}
 	}
 

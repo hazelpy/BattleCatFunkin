@@ -582,27 +582,26 @@ class ChartingState extends MusicBeatState
 
 		if (FlxG.mouse.justPressed)
 		{
-			if (FlxG.mouse.overlaps(curRenderedNotes))
+			var overlapping:Bool = false;
+			curRenderedNotes.forEach(function(note:Note)
 			{
-				curRenderedNotes.forEach(function(note:Note)
+				if (FlxG.mouse.overlaps(note))
 				{
-					if (FlxG.mouse.overlaps(note))
+					overlapping = true;
+					if (FlxG.keys.pressed.CONTROL)
 					{
-						if (FlxG.keys.pressed.CONTROL)
-						{
-							selectNote(note);
-						}
-						else
-						{
-							trace('tryin to delete note');
-							trace(note.noteData);
-							deleteNote(note);
-						}
+						selectNote(note);
 					}
-				});
-			}
-			else
-			{
+					else
+					{
+						trace('tryin to delete note');
+						trace(note.noteData);
+						deleteNote(note);
+					}
+				}
+			});
+					
+			if (!overlapping) {
 				if (FlxG.mouse.x > gridBG.x
 					&& FlxG.mouse.x < gridBG.x + gridBG.width
 					&& FlxG.mouse.y > gridBG.y
@@ -1017,18 +1016,40 @@ class ChartingState extends MusicBeatState
 		for (n in 0..._song.notes[curSection].sectionNotes.length)
 		{
 			var i = _song.notes[curSection].sectionNotes[n];
+
 			if (i == null)
 				continue;
-			if ((i[0] == note.strumTime + (note.strumTime == 0 ? 0 : 1) 
-				? true : i[0] == note.strumTime) 
-				&& i[1] % 4 == note.noteData)
-				// Why does it do this?
-				// I DONT FUCKING KNOW!!!!!!!!!!!!!!
+
+			if ((i[0] + 4 == note.strumTime /** adding 4 because that seems to be the offset~ **/) && (i[1] % 4 == note.noteData))
 			{
-				trace('GAMING');
+				trace('Removing note found!');
 				_song.notes[curSection].sectionNotes.remove(i);
+			} else {
+				// this is debug shit that like never shows, ignore
+
+				var	_tab = "    ";
+				trace("STRUM DATA: \n"
+					  + _tab
+					  + "i[0]: " + i[0] + ", note.strumTime: " + note.strumTime);
+				
+				trace("NOTE DATA: \n"
+					  + _tab
+					  + "i[1]: " + i[1] + ", note.noteData: " + note.noteData);
 			}
 		}
+
+		/*
+		(IF strum time IS EQUAL TO note's strum time + 1 (or 0 if strum time is 0) THEN
+			true
+		ELSE IF strum time IS EQUAL TO note's strum time)
+		AND IF noteData MOD 4 IS EQUAL TO note's noteData
+			remove note
+
+		in theory if we just check the strum times and note data we can remove the note
+		so I tried that, and it turns out there was a constant 4 added to the note.strumTime, so I added that
+		back to the i[0] and it works like a charm! so the editor is fixed. leaving these notes in so
+		you can see how I fixed it and why it works well :3
+		*/
 
 		updateGrid();
 	}

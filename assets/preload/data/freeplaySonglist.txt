@@ -4,3 +4,4 @@ Fresh:1:dad:2
 Dadbattle:1:dad:2
 Spookeez:2:spooky:2
 South:2:spooky:2
+Scratcher:1:dad:1

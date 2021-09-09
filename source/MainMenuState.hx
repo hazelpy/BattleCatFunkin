@@ -5,6 +5,7 @@ import Controls.KeyboardScheme;
 import flixel.FlxG;
 import flixel.FlxObject;
 import flixel.FlxSprite;
+import flixel.math.FlxPoint;
 import flixel.effects.FlxFlicker;
 import flixel.graphics.frames.FlxAtlasFrames;
 import flixel.group.FlxGroup.FlxTypedGroup;
@@ -12,15 +13,17 @@ import flixel.text.FlxText;
 import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxTimer;
+import flixel.util.FlxColor;
+import flixel.util.FlxSignal;
 import flixel.input.mouse.FlxMouse;
 import flixel.input.mouse.FlxMouseEventManager;
-import flixel.util.FlxColor;
 import flixel.system.FlxSound;
 import io.newgrounds.NG;
 import lime.app.Application;
 import openfl.Assets;
 import sys.io.Process;
 import sys.thread.Thread;
+import GameJolt.GameJoltAPI;
 
 #if desktop
 import Discord.DiscordClient;
@@ -54,11 +57,24 @@ class MainMenuState extends MusicBeatState
 	var doorLocked:Bool = false;
 	var doorTrigger:Bool = false;
 	var doorThreshold:Float = 665;
+	var percentMouseDrag:Float = 0.35;
 	var curSound:String = Paths.sound("big");
+	var curSoundName:String = "big";
 	var curSoundIsMusic:Bool = false;
+	var menuBText:FlxSprite;
+	var diaBox:FlxSprite;
+	var idleingCat:FlxSprite;
+	var fuckingBullshitTimer:FlxTimer;
+	var versionShit:FlxText;
 
+	public static var alertSignal:FlxTypedSignal<String->Void>;
 
-	var eggs:Map<String, Array<String>> = ["big" => ['big', 'menu/chungus', '95'], "ooga" => ['booga', 'menu/ooga', '25'], "friend" => ["creepyMusic", "menu/friend", "5", "1"]];
+	var eggs:Map<String, Array<String>> = [
+		"big" => ['big', 'menu/chungus', '95'], 
+		"ooga" => ['booga', 'menu/ooga', '25'], 
+		"friend" => ["creepyMusic", "menu/friend", "5", "1"],
+		"drip" => ["drip", "menu/drip", "25"]
+	];
 
 	var rightDoor:FlxSprite;
 	var lastX:Float = 640;
@@ -69,8 +85,13 @@ class MainMenuState extends MusicBeatState
 	public static var inSubstate:Bool = false;
 	public static var recording = false;
 
+	var sfxPlaying:FlxSound;
+
 	override function create()
 	{
+		alertSignal = new FlxTypedSignal<String->Void>();
+		alertSignal.add(createAlertSubState);
+
 		#if desktop
 		// Updating Discord Rich Presence
 		DiscordClient.changePresence("In the Menus", null);
@@ -79,6 +100,14 @@ class MainMenuState extends MusicBeatState
 		#if debug 
 		displayGameVer += " DEBUG";
 		#end
+
+		// GAMEJOLT STUFF
+		// For anyone trying to work with the code,
+		// this line uses the GJKeys file that the FNF GameJolt integration requires.
+		// For y'all, this is .gitignore'd. You'll have to make the file yourself.
+		// GJKeys.trophies is a public static var of type Map<String, Int>.
+		// Good luck!
+		GameJoltAPI.getTrophy(GJKeys.trophies.get("thankYou"));
 
 		FlxG.mouse.visible = true;
 		FlxG.mouse.useSystemCursor = true;
@@ -112,7 +141,7 @@ class MainMenuState extends MusicBeatState
 
 		for (i in 0...optionShit.length)
 		{
-			var menuItem:FlxSprite = new FlxSprite( 20, 80 + (i * 90) );
+			var menuItem:FlxSprite = new FlxSprite( -640, 80 + (i * 90) ); // tween to 20 x
 				menuItem.frames = Paths.getSparrowAtlas(("menu/ui/" + (optionShit[i].toLowerCase() + "_sheet")));
 				menuItem.animation.addByPrefix('idle', 'idle', 24, true);
 				menuItem.animation.addByPrefix('active', 'active', 24, true);
@@ -122,43 +151,64 @@ class MainMenuState extends MusicBeatState
 				menuItem.scrollFactor.set();
 				menuItem.antialiasing = true;
 			menuItems.add(menuItem);
+
+			FlxTween.tween(menuItem, {x: 20}, 0.5, {ease: FlxEase.expoOut});
 		}
 
 		// Add Idleing Cat
-		var idleingCat:FlxSprite = new FlxSprite(820, 260);
-			idleingCat.frames = Paths.getSparrowAtlas('menu/CatIdle');
-			idleingCat.animation.addByPrefix('idle', 'IDLE_CAT', 24, true);
-			idleingCat.animation.play('idle');
-			idleingCat.setGraphicSize( Std.int(idleingCat.width * 1) );
-			idleingCat.updateHitbox();
-			idleingCat.flipX = true;
+		idleingCat = new FlxSprite(820, 1260); // tween to 260 y
+		idleingCat.frames = Paths.getSparrowAtlas('menu/CatIdle');
+		idleingCat.animation.addByPrefix('idle', 'IDLE_CAT', 24, true);
+		idleingCat.animation.play('idle');
+		idleingCat.setGraphicSize( Std.int(idleingCat.width * 1) );
+		idleingCat.updateHitbox();
+		idleingCat.flipX = true;
 		add(idleingCat);
-		
+
+		FlxTween.tween(idleingCat, {y: 260}, 0.5, {
+			ease: FlxEase.expoOut
+		});
+
 		// Dialogue Box & Text
-		var diaBox:FlxSprite = new FlxSprite(15, 0).loadGraphic( Paths.image("menu/menuTextBox") );
+		diaBox = new FlxSprite(15, -1000).loadGraphic( Paths.image("menu/menuTextBox") ); // tween to 0 y
+		FlxMouseEventManager.add(diaBox, doTextChange);
 		add(diaBox);
+
+		FlxTween.tween(diaBox, {y: 0}, 0.5, {
+			ease: FlxEase.expoOut
+		});
 
 		// Font Size 28
 		// 945, 155
-		diaText = new FlxText(645, 120, 600, '', 28, false);
+		diaText = new FlxText(645, -880, 600, '', 28, false); // tween to 120 y
 		diaText.setFormat(Paths.font('taxicab.ttf'), 36, 0x00FFFFFF, 'center', FlxTextBorderStyle.OUTLINE, 0x00000000);
 		diaText.borderSize = 3;
 		diaText.autoSize = false;
 		setMainMenuText();
 		add(diaText);
 
+		FlxTween.tween(diaText, {y: 120}, 0.5, {
+			ease: FlxEase.expoOut
+		});
+
 		// Borders & Version Shit. Added last.
 		var menuBorders:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/menuBorders") );
 		add(menuBorders);
 	
-		var menuBText:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/menuBorderText") );
+		menuBText = new FlxSprite(-640, 0).loadGraphic( Paths.image("menu/menuBorderText") );
 		add(menuBText);
 
-		var versionShit:FlxText = new FlxText(5, FlxG.height - 18, 0, gameVer, 12);
+		FlxTween.tween(menuBText, {x:0}, 0.6, {
+			ease: FlxEase.quadOut
+		});
+
+		versionShit = new FlxText(5, FlxG.height + 150, 0, gameVer, 12); // ease to FlxG.height - 18
 		versionShit.scrollFactor.set();
 		versionShit.setFormat("VCR OSD Mono", 16, FlxColor.WHITE, LEFT, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
 		diaText.borderSize = 7;
 		add(versionShit);
+
+		FlxTween.tween(versionShit, {y: FlxG.height - 18}, 0.4, {ease: FlxEase.backOut});
 
 		// NG.core.calls.event.logEvent('swag').send();
 
@@ -177,6 +227,10 @@ class MainMenuState extends MusicBeatState
 		loadLockedSongList();
 
 		super.create();
+	}
+
+	function createAlertSubState(txt:String) {
+		openSubState(new AlertSubstate(txt));
 	}
 
 	public static function loadLockedSongList() {
@@ -263,14 +317,45 @@ class MainMenuState extends MusicBeatState
 		trace(res + ", " + index);
 
 		curSound = sounds[index];
+		curSoundName = res;
 
 		item.loadGraphic(images[index]);
 		item.screenCenter();
 
 		if (res == 'friend') {
 			FlxG.sound.playMusic(Paths.music("creepyMusic"));
-			doorLocked = true;
+			lockDoor(960);
+			GameJoltAPI.getTrophy(GJKeys.trophies.get("friendTrophy"));
+
+			if (!Unlocks.get('icons.friend')) {
+				alertSignal.dispatch("Unlocked a special Travel Icon!\nCheck the settings for more info.");
+				Unlocks.unlock('icons.friend');
+			}
 		}
+	}
+
+	function doTextChange(object:FlxObject) { mainMenuTextBump(30); }
+	function mainMenuTextBump(diaBumpDist:Float = 10) {
+		// diaBox  = dialogue box
+		// diaText = dialogue text
+		// default Y values: 0, 120
+
+		setMainMenuText();
+
+		var tempHeights:FlxPoint = new FlxPoint(diaBox.y, diaText.y);
+
+		diaBox.y = tempHeights.x - diaBumpDist;
+		diaBox.setGraphicSize(Std.int(diaBox.width * 1), Std.int(diaBox.height * 1.05));
+		diaBox.updateHitbox();
+
+		diaText.y = tempHeights.y - diaBumpDist;
+
+		FlxTween.cancelTweensOf(diaBox); 
+		FlxTween.cancelTweensOf(diaText);
+		FlxTween.tween(diaText, {y: 120}, 0.3, {ease: FlxEase.backOut});
+		FlxTween.tween(diaBox, {y: 0, 'scale.y': 1}, 0.3, {ease: FlxEase.backOut, onComplete: function(twn:FlxTween) {
+			diaBox.updateHitbox();
+		}});
 	}
 
 	function setMainMenuText() {
@@ -298,9 +383,16 @@ class MainMenuState extends MusicBeatState
 	}
 
 	var selectedSomethin:Bool = false;
+	var commaCount = 0;
+	var commaTimer:FlxTimer = new FlxTimer();
+	var devNames:Array<String> = [
+		"butterdog", "rushtoxin"
+	];
 
 	override function update(elapsed:Float)
 	{
+		// im so shitty at coding
+		diaBox.updateHitbox();
 		if (FlxG.sound.music.volume < 0.8)
 		{
 			FlxG.sound.music.volume += 0.5 * FlxG.elapsed;
@@ -308,6 +400,48 @@ class MainMenuState extends MusicBeatState
 
 		if (!selectedSomethin && !inSubstate)
 		{
+			// developer check
+			if (FlxG.keys.justPressed.COMMA) {
+				if (!commaTimer.active) {
+					commaTimer.cancel();
+				}
+
+				if (commaCount < 5) {
+					commaCount++;
+
+					commaTimer.start(1.5, function(t:FlxTimer) {
+						// End Combo
+						commaCount = 0;
+					});
+				} else {
+					GameJoltAPI.getTrophy(GJKeys.trophies.get("whatTheDogDoinTrophy"));
+
+					if (Unlocks.get('devIcons') != 'nil') {
+						if(!Unlocks.get('devIcons')) {
+							Unlocks.unlock('devIcons', false);
+							alertSignal.dispatch("Unlocked Developer Travel Icons!\nCheck the settings for more info.");
+						}
+					} else {
+						Unlocks.set('devIcons', true);
+						Unlocks.save();
+							
+						alertSignal.dispatch("Unlocked Developer Travel Icons!\nCheck the settings for more info.");
+					}
+
+					for (i in devNames) {
+						if (Unlocks.get('icons.' + i) == 'nil') {
+							Unlocks.set('icons.' + i, true);
+						} else {
+							if (!Unlocks.get('icons.' + i)) {
+								Unlocks.unlock('icons.' + i, true);
+							}
+						}
+					}
+
+					commaCount = 0;
+				}
+			}
+
 			if (controls.UP_P)
 			{
 				FlxG.sound.play(Paths.sound('scrollMenu'));
@@ -322,7 +456,12 @@ class MainMenuState extends MusicBeatState
 
 			if (controls.BACK)
 			{
-				FlxG.switchState(new TitleState());
+				FlxG.camera.fade();
+				FlxG.sound.music.fadeIn(1, 0.7, 0);
+				
+				new FlxTimer().start(1, function(tmr:FlxTimer) {
+					FlxG.switchState(new TitleState());
+				});
 			}
 
 			if (controls.ACCEPT)
@@ -341,22 +480,36 @@ class MainMenuState extends MusicBeatState
 				else
 				{
 					selectedSomethin = true;
+
+					if (doorLocked || dragging) {
+						dragging = false;
+						doorLocked = false;
+
+						// Move the door back
+						FlxTween.tween(rightDoor, {x: 640}, 0.75, {
+							ease: FlxEase.expoInOut
+						});
+					}
+
 					FlxG.sound.play(Paths.sound('confirmMenu'));
 
 					menuItems.forEach(function(spr:FlxSprite)
 					{
 						if (curSelected != spr.ID)
 						{
-							FlxTween.tween(spr, {alpha: 0}, 1.3, {
-								ease: FlxEase.quadOut,
-								onComplete: function(twn:FlxTween)
-								{
-									spr.kill();
-								}
+							new FlxTimer().start(0.2, function(tmr:FlxTimer) {
+								FlxTween.tween(spr, {x: -FlxG.width / 1.5}, 1, {
+									ease: FlxEase.quadIn,
+									onComplete: function(twn:FlxTween)
+									{
+										spr.kill();
+									}
+								});
 							});
 						}
 						else
 						{
+							/*
 							FlxFlicker.flicker(spr, 1, 0.06, false, false, function(flick:FlxFlicker)
 							{
 								var daChoice:String = optionShit[curSelected];
@@ -372,6 +525,57 @@ class MainMenuState extends MusicBeatState
 
 										trace("Freeplay Menu Selected");
 								}
+							}); */
+
+							var choice:String = optionShit[curSelected];
+							if (choice == 'freeplay') FlxG.sound.music.fadeIn(0.8, 0.7, 0);
+							dragging = false;
+							doorLocked = true;
+
+							// Move Out Obstructions ... 
+							FlxTween.tween(idleingCat, {y: 1260}, 0.5, {
+								ease: FlxEase.quadIn
+							});
+
+							FlxTween.tween(menuBText, {x:-640}, 0.8, {
+								ease: FlxEase.quadIn
+							});
+
+							FlxTween.tween(diaBox, {y: -1000}, 0.5, {
+								ease: FlxEase.expoIn
+							});
+
+							FlxTween.tween(diaText, {y: -880}, 0.5, {
+								ease: FlxEase.expoIn
+							});
+
+							// Flicker Selection
+							flickerColor(spr, 1, 0.06, 0xffffff, 0x000000, 0xffffff, null, function() {
+								var daChoice:String = optionShit[curSelected];
+
+								switch (daChoice)
+								{
+									case 'story mode':
+										// Swap to StoryMapState, not StoryMenuState
+										FlxG.switchState(new StoryMapState());
+										trace("Story Map Selected");
+									case 'freeplay':
+										
+										FlxG.switchState(new FreeplayState());
+
+										trace("Freeplay Menu Selected");
+								}
+							});
+
+							new FlxTimer().start(0.3, function(tmr:FlxTimer) {
+								FlxTween.tween(versionShit, {y: FlxG.height + 150}, 0.4, {ease: FlxEase.backIn});
+								FlxTween.tween(spr, {x: -FlxG.width / 1.5}, 1, {
+									ease: FlxEase.quadIn,
+									onComplete: function(twn:FlxTween)
+									{
+										spr.kill();
+									}
+								});
 							});
 						}
 					});
@@ -385,18 +589,22 @@ class MainMenuState extends MusicBeatState
 				lastX = 640;
 			} else {
 				if (FlxG.mouse.screenX >= 640 && FlxG.mouse.screenX <= 2560) {
-					rightDoor.x = 640 + ( (FlxG.mouse.screenX - 640) * 0.65 );
+					rightDoor.x = 640 + ( (FlxG.mouse.screenX - 640) * percentMouseDrag );
 
 					if (!doorTrigger && lastX <= doorThreshold && rightDoor.x > doorThreshold) {
 						doorTrigger = true;
-						FlxG.sound.play(curSound);
+
+						switch(curSoundName) {
+							case 'big':
+								GameJoltAPI.getTrophy(GJKeys.trophies.get("chungusTrophy"));
+						}
+
+						sfxPlaying = FlxG.sound.play(curSound);
 					}
 
 					lastX = rightDoor.x;
 				}
 			}
-		} else {
-			rightDoor.x = 960;
 		}
 
 		super.update(elapsed);
@@ -407,6 +615,22 @@ class MainMenuState extends MusicBeatState
 		});
 	}
 
+	function flickerColor(sprite:FlxSprite, dur:Float = 1, interval:Float = 0.04, firstColor:FlxColor = FlxColor.BLACK, secondColor:FlxColor = FlxColor.WHITE, endColor:FlxColor = FlxColor.BLACK, ?colorChangeCallback:FlxColor -> Void, ?completionCallback:Void -> Void) {
+		var colorToggle:Bool = false;
+
+		var flicker:FlxTimer = new FlxTimer().start(interval, function(tmr:FlxTimer) {
+			if (colorToggle) { sprite.color = secondColor; } else { sprite.color = firstColor; } colorToggle = !colorToggle;
+			if (colorChangeCallback != null) colorChangeCallback(sprite.color);
+		}, Math.ceil(dur / interval));
+
+		var progress:FlxTimer = new FlxTimer().start(dur, function(tmr:FlxTimer) {
+			flicker.cancel();
+
+			sprite.color = endColor;
+			if (completionCallback != null) completionCallback();
+		});
+	}
+
 	function dragDoor(object:FlxObject) {
 		if (!doorLocked && !inSubstate) {
 			setRandomEgg();
@@ -414,9 +638,31 @@ class MainMenuState extends MusicBeatState
 		}
 	}
 
-	function releaseDoor(object:FlxObject) {
+	function releaseDoorAndLock() {
 		dragging = false;
 		doorTrigger = false;
+		
+		if (!doorLocked) {
+			FlxG.sound.list.forEach(function(s:FlxSound) {
+				s.stop();
+			});
+		}
+		
+		lockDoor();
+	}
+
+	function lockDoor(x:Float = 640) {
+		dragging = false;
+		doorLocked = true;
+		rightDoor.x = x;
+	}
+
+	function releaseDoor(?object:FlxObject) {
+		dragging = false;
+		doorTrigger = false;
+
+		if (fuckingBullshitTimer != null)
+		if (fuckingBullshitTimer.active) fuckingBullshitTimer.cancel();
 
 		if (!doorLocked) {
 			FlxG.sound.list.forEach(function(s:FlxSound) {

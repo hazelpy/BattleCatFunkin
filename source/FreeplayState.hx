@@ -42,6 +42,10 @@ class FreeplayState extends MusicBeatState
 
 	var songIconPaths:Map<String, String>;
 
+	var menuBText:FlxSprite;
+	var leftDoor:FlxSprite;
+	var rightDoor:FlxSprite;
+
 	private var grpSongs:FlxTypedGroup<FlxSprite>;
 	private var grpHighlights:FlxTypedGroup<FlxSprite>;
 	private var curPlaying:Bool = false;
@@ -189,14 +193,35 @@ class FreeplayState extends MusicBeatState
 
 		add(songNameText);
 		add(songWeekInfo);
-		 updateSongInfo();
+		updateSongInfo();
+
+		// ADD THE DOORS
+		leftDoor = new FlxSprite( -7, 0 ).loadGraphic( Paths.image("menu/menuBackgroundLeft") );
+		add(leftDoor);
+
+		rightDoor = new FlxSprite( 640, 0 ).loadGraphic( Paths.image("menu/menuBackgroundRight") );
+		add(rightDoor);
+
+		FlxTween.tween(leftDoor, {x: -647}, 0.6, {
+			ease: FlxEase.quadIn
+		});
+
+		FlxTween.tween(rightDoor, {x: 1280}, 0.6, {
+			ease: FlxEase.quadIn
+		});
 
 		// Borders & Version Shit. Added last.
 		var menuBorders:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/menuBorders") );
 		add(menuBorders);
 	
-		var menuBText:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/songSelectText") );
+		menuBText = new FlxSprite(-500, 0).loadGraphic( Paths.image("menu/songSelectText") );
 		add(menuBText);
+
+		new FlxTimer().start(0.3, function(tmr:FlxTimer) {
+			FlxTween.tween(menuBText, {x:0}, 0.6, {
+				ease: FlxEase.quadOut
+			});
+		});
 
 		// Screen Dim and Alert Overlay. Added after the borders to affect the whole screen.
 		screenDim = new FlxSprite().makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
@@ -288,7 +313,26 @@ class FreeplayState extends MusicBeatState
 			if (controls.BACK)
 			{
 				FlxG.sound.playMusic(Paths.music('bcMenu'), 0);
-				FlxG.switchState(new MainMenuState());
+				
+				// FADE EVERYTHING OUT
+				new FlxTimer().start(0.4, function(tmr:FlxTimer) {
+					FlxTween.tween(leftDoor, {x: -7}, 0.4, {
+						ease: FlxEase.expoOut
+					});
+			
+					FlxTween.tween(rightDoor, {x: 640}, 0.4, {
+						ease: FlxEase.expoOut
+					});
+				});
+
+				FlxTween.tween(menuBText, {x:-640}, 0.6, {
+					ease: FlxEase.quadIn
+				});
+
+				// MOVE BACK
+				new FlxTimer().start(0.8, function(tmr:FlxTimer) {
+					FlxG.switchState(new MainMenuState());
+				});
 			}
 
 			if (accepted)

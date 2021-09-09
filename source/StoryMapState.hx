@@ -19,10 +19,18 @@ import flixel.tweens.FlxEase;
 import flixel.tweens.FlxTween;
 import flixel.util.FlxColor;
 import flixel.util.FlxTimer;
+import flixel.util.FlxSignal;
+import flixel.input.mouse.FlxMouse;
+import flixel.input.mouse.FlxMouseEventManager;
 import flixel.util.FlxSpriteUtil;
 import flixel.math.FlxMath;
 import flixel.math.FlxPoint;
 import lime.net.curl.CURLCode;
+import GameJolt.GameJoltAPI;
+
+import openfl.display.Sprite;
+import openfl.events.MouseEvent;
+import openfl.display.SimpleButton;
 
 #if desktop
 import Discord.DiscordClient;
@@ -72,10 +80,14 @@ class StoryMapState extends MusicBeatState
 	var rightArrow:FlxSprite;
 	var travelIcon:FlxSprite;
 	var travelIconShadow:FlxSprite;
+	var leftDoor:FlxSprite;
+	var rightDoor:FlxSprite;
+	var menuBText:FlxSprite;
 
 	var gameCamera:FlxCamera;
-	var uiCamera:FlxCamera;
 	var mainCamera:FlxCamera;
+	public static var uiCamera:FlxCamera;
+	public static var inAlert:Bool = false;
 
 	var locations:FlxTypedGroup<FlxSprite>;
 	var clears:FlxTypedGroup<FlxSprite>;
@@ -114,15 +126,14 @@ class StoryMapState extends MusicBeatState
 		gameCamera.follow(camFollow, null, 0.60 * (60 / FlxG.save.data.fpsCap));
 
 		FlxCamera.defaultCameras = [gameCamera];
-		
-		transIn = FlxTransitionableState.defaultTransIn;
-		transOut = FlxTransitionableState.defaultTransOut;
 
 		persistentUpdate = persistentDraw = true;
 
-		scoreText = new FlxText(FlxG.width - 415, 7, 400, "SCORE: 49324858", 36);
+		scoreText = new FlxText(FlxG.width - 415, -500, 400, "SCORE: 49324858", 36); // tween to 7
 		scoreText.setFormat(Paths.font("taxicab.ttf"), 32, FlxColor.BLACK, RIGHT);
 		scoreText.cameras = [uiCamera];
+
+		FlxTween.tween(scoreText, {y: 7}, 0.5, {ease: FlxEase.expoOut});
 
 		txtWeekTitle = new FlxText(FlxG.width * 0.7, 7, 0, "", 32);
 		txtWeekTitle.setFormat("VCR OSD Mono", 32, FlxColor.WHITE, RIGHT);
@@ -175,11 +186,20 @@ class StoryMapState extends MusicBeatState
 		}
 
 		// THEN TRAVEL ICON
-		travelIcon = new FlxSprite().loadGraphic(Paths.image('menu/ui/weekmap/travelIcon'));
+		if (FlxG.save.data.travelIconData == null) {
+			FlxG.save.data.travelIconData = [Paths.image('menu/ui/weekmap/travelIcon'), Paths.image('menu/ui/weekmap/travelIconActive')];
+			FlxG.save.flush();
+		}
+
+		travelIcon = new FlxSprite().loadGraphic(FlxG.save.data.travelIconData[0]);
 		travelIconShadow = new FlxSprite().loadGraphic(Paths.image('menu/ui/weekmap/travelIconShadow'));
 		
 		add(travelIconShadow);
 		add(travelIcon);
+		
+		// ADD EVENT TO TRAVEL ICON
+		// MainMenuState.alertSignal.dispatch(text);
+		FlxMouseEventManager.add(travelIcon, altBFUnlock);
 
 		travelIconHop();
 
@@ -301,18 +321,93 @@ class StoryMapState extends MusicBeatState
 		updateText();
 		MainMenuState.loadLockedSongList();
 
+		// ADD THE DOORS
+		leftDoor = new FlxSprite( -7, 0 ).loadGraphic( Paths.image("menu/menuBackgroundLeft") );
+		leftDoor.cameras = [uiCamera];
+		add(leftDoor);
+
+		rightDoor = new FlxSprite( 640, 0 ).loadGraphic( Paths.image("menu/menuBackgroundRight") );
+		rightDoor.cameras = [uiCamera];
+		add(rightDoor);
+
+		FlxTween.tween(leftDoor, {x: -647}, 0.6, {
+			ease: FlxEase.quadIn
+		});
+
+		FlxTween.tween(rightDoor, {x: 1280}, 0.6, {
+			ease: FlxEase.quadIn
+		});
+
 		// Borders & Version Shit. Added last.
-		var menuBorders:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/menuBordersDark") );
+		var menuBorders:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/menuBorders") );
 			menuBorders.cameras = [uiCamera];
 		add(menuBorders);
 	
-		var menuBText:FlxSprite = new FlxSprite().loadGraphic( Paths.image("menu/storyMapText") );
-			menuBText.cameras = [uiCamera];
+		menuBText = new FlxSprite(-640, 0).loadGraphic( Paths.image("menu/storyMapText") );
+		menuBText.cameras = [uiCamera];
 		add(menuBText);
+
+		new FlxTimer().start(0.3, function(tmr:FlxTimer) {
+			FlxTween.tween(menuBText, {x:0}, 0.6, {
+				ease: FlxEase.quadOut
+			});
+		});
 
 		add(scoreText);
 
 		super.create();
+	}
+
+	var noActivate:Bool = false;
+	function altBFUnlock(object:FlxSprite) {
+		if (noActivate) return;
+
+		noActivate = true;
+		activateTravelIcon();
+		playIconSoundEffect();
+
+		new FlxTimer().start(0.75, function(t:FlxTimer) {
+			resetTravelIcon();
+			noActivate = false;
+		});
+
+		GameJoltAPI.getTrophy(GJKeys.trophies.get("iconHopTrophy"));
+
+		if (!Unlocks.get('icons.altBF')) {
+			createAlertSubState("Unlocked new Travel Icon!\nCheck the settings for more info.");
+			Unlocks.unlock('icons.altBF');
+		}
+	}
+
+	public static var iconSounds:Map<String, String> = [
+		"default" => Paths.sound("icons/bf"),
+		"altBF" => Paths.sound("icons/bf"),
+		"friend" => Paths.sound("icons/friend"),
+		"butterdog" => Paths.sound("icons/butterdog"),
+		"rushtoxin" => Paths.sound("icons/rushtoxin")
+	];
+
+	function playIconSoundEffect() {
+		if (FlxG.save.data.travelIcon == null) {
+			FlxG.save.data.travelIcon = 'default';
+			FlxG.save.flush();
+		}
+
+		var iconPath = iconSounds.get(FlxG.save.data.travelIcon);
+		FlxG.sound.play(iconPath);
+	}
+
+	function createAlertSubState(txt:String) {
+		inAlert = true;
+		openSubState(new AlertSubstate(txt));
+	}
+
+	function resetTravelIcon() {
+		travelIcon.loadGraphic(FlxG.save.data.travelIconData[0]);
+	}
+
+	function openSubstatePls(txt:String) {
+		openSubState(new AlertSubstate(txt));
 	}
 
 	function drawDottedLine(aPos:FlxPoint, bPos:FlxPoint):FlxTypedGroup<FlxSprite> {
@@ -391,8 +486,30 @@ class StoryMapState extends MusicBeatState
 		if (controls.BACK && !movedBack && !selectedWeek)
 		{
 			FlxG.sound.play(Paths.sound('cancelMenu'));
-			movedBack = true;
-			FlxG.switchState(new MainMenuState());
+
+			// FADE EVERYTHING OUT
+			new FlxTimer().start(0.4, function(tmr:FlxTimer) {
+				FlxTween.tween(leftDoor, {x: -7}, 0.4, {
+					ease: FlxEase.expoOut
+				});
+		
+				FlxTween.tween(rightDoor, {x: 640}, 0.4, {
+					ease: FlxEase.expoOut
+				});
+			});
+
+			FlxTween.tween(scoreText, {y: -500}, 0.5, {ease: FlxEase.quadIn});
+			FlxTween.tween(menuBText, {x:-640}, 0.6, {
+				ease: FlxEase.quadIn
+			});
+
+			FlxTween.tween(gameCamera, {zoom: 0.85}, 1.2, {ease: FlxEase.quadIn});
+
+			// MOVE BACK
+			new FlxTimer().start(0.8, function(tmr:FlxTimer) {
+				movedBack = true;
+				FlxG.switchState(new MainMenuState());
+			});
 		}
 
 		for (i in locations) {
@@ -559,7 +676,7 @@ class StoryMapState extends MusicBeatState
 		var travelIconPos = new FlxPoint(travelIcon.x, travelIcon.y);
 		var travelIconScale = new FlxPoint(travelIcon.scale.x, travelIcon.scale.y);
 
-		travelIcon.loadGraphic(Paths.image('menu/ui/weekmap/travelIconActive'));
+		travelIcon.loadGraphic(FlxG.save.data.travelIconData[1]);
 
 		FlxTween.tween(travelIcon, {y: travelIconPos.y - 10}, jumpDuration / 2, {
 			ease: FlxEase.expoOut
